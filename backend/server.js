@@ -36,24 +36,41 @@ const indexPath = path.join(frontendPath, 'index.html');
 
 console.log('Serving frontend from:', frontendPath);
 
-if (fs.existsSync(frontendPath)) {
-  app.use(express.static(frontendPath));
+try {
+  if (fs.existsSync(frontendPath)) {
+    app.use(express.static(frontendPath));
 
-  // Wildcard route to support React Router / client-side routing.
-  app.get('*', (req, res, next) => {
-    // Let API routes go to their handlers.
-    if (req.path.startsWith('/contacts') || req.path.startsWith('/api')) return next();
+    // Wildcard route to support React Router / client-side routing.
+    app.get('*', (req, res, next) => {
+      try {
+        // Let API routes go to their handlers.
+        if (req.path.startsWith('/contacts') || req.path.startsWith('/api')) return next();
 
-    if (fs.existsSync(indexPath)) {
-      return res.sendFile(indexPath);
-    }
+        if (!fs.existsSync(indexPath)) {
+          console.error('Frontend index file missing:', indexPath);
+          return res.status(404).json({
+            message: 'Frontend build not found. Make sure backend/dist/index.html exists.',
+          });
+        }
 
-    return res.status(404).json({
-      message: 'Frontend build not found. Make sure backend/dist/index.html exists.',
+        return res.sendFile(indexPath, (err) => {
+          if (err) {
+            console.error('Error sending frontend index.html:', err);
+            if (!res.headersSent) {
+              res.status(500).json({ message: 'Failed to load frontend.' });
+            }
+          }
+        });
+      } catch (error) {
+        console.error('Error in frontend fallback route:', error);
+        return res.status(500).json({ message: 'Frontend route error.' });
+      }
     });
-  });
-} else {
-  console.error('Frontend build directory missing at startup:', frontendPath);
+  } else {
+    console.error('Frontend build directory missing at startup:', frontendPath);
+  }
+} catch (error) {
+  console.error('Error configuring static frontend serving:', error);
 }
 
 // 404 + error handling
