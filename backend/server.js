@@ -30,21 +30,31 @@ app.get('/api/health', (req, res) => {
 // Routes
 app.use('/contacts', contactRoutes);
 
-// Serve frontend (single-URL deployment)
-// Render build may output dist (Vite) or build (CRA); support both.
-const frontendDistPath = path.join(__dirname, '..', 'frontend', 'dist');
-const frontendBuildPath = path.join(__dirname, '..', 'frontend', 'build');
-const frontendPath = fs.existsSync(frontendDistPath)
-  ? frontendDistPath
-  : frontendBuildPath;
-app.use(express.static(frontendPath));
+// Serve frontend from backend/dist (Render single-URL deployment).
+const frontendPath = path.join(__dirname, 'dist');
+const indexPath = path.join(frontendPath, 'index.html');
 
-// Wildcard route to support React Router / client-side routing.
-app.get('*', (req, res, next) => {
-  // If request looks like an API/static file miss, let error handler handle it.
-  if (req.path.startsWith('/contacts') || req.path.startsWith('/api')) return next();
-  res.sendFile(path.join(frontendPath, 'index.html'));
-});
+console.log('Serving frontend from:', frontendPath);
+
+if (fs.existsSync(frontendPath)) {
+  app.use(express.static(frontendPath));
+
+  // Wildcard route to support React Router / client-side routing.
+  app.get('*', (req, res, next) => {
+    // Let API routes go to their handlers.
+    if (req.path.startsWith('/contacts') || req.path.startsWith('/api')) return next();
+
+    if (fs.existsSync(indexPath)) {
+      return res.sendFile(indexPath);
+    }
+
+    return res.status(404).json({
+      message: 'Frontend build not found. Make sure backend/dist/index.html exists.',
+    });
+  });
+} else {
+  console.error('Frontend build directory missing at startup:', frontendPath);
+}
 
 // 404 + error handling
 app.use(notFound);
