@@ -3,10 +3,11 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
+const mongoose = require('mongoose');
 
 const contactRoutes = require('./routes/contactRoutes');
 const { notFound, errorHandler } = require('./middleware/errorHandler');
-const connectDB = require('./config/db');
 
 const app = express();
 
@@ -22,7 +23,7 @@ app.use(
 );
 
 // Simple health check
-app.get('/', (req, res) => {
+app.get('/api/health', (req, res) => {
   res.json({ message: 'Contact Management API is running.' });
 });
 
@@ -30,15 +31,19 @@ app.get('/', (req, res) => {
 app.use('/contacts', contactRoutes);
 
 // Serve frontend (single-URL deployment)
-// Build the frontend first (frontend/dist) then backend will serve it.
+// Render build may output dist (Vite) or build (CRA); support both.
 const frontendDistPath = path.join(__dirname, '..', 'frontend', 'dist');
-app.use(express.static(frontendDistPath));
+const frontendBuildPath = path.join(__dirname, '..', 'frontend', 'build');
+const frontendPath = fs.existsSync(frontendDistPath)
+  ? frontendDistPath
+  : frontendBuildPath;
+app.use(express.static(frontendPath));
 
 // Wildcard route to support React Router / client-side routing.
 app.get('*', (req, res, next) => {
   // If request looks like an API/static file miss, let error handler handle it.
-  if (req.path.startsWith('/contacts')) return next();
-  res.sendFile(path.join(frontendDistPath, 'index.html'));
+  if (req.path.startsWith('/contacts') || req.path.startsWith('/api')) return next();
+  res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
 // 404 + error handling
@@ -46,12 +51,19 @@ app.use(notFound);
 app.use(errorHandler);
 
 async function startServer() {
-  const PORT = process.env.PORT || 5000;
-  await connectDB();
+  console.log('MONGO_URI:', process.env.MONGO_URI ? 'Exists' : 'Missing');
 
-  app.listen(PORT, () => {
+  try {
+    await mongoose.connect(process.env.MONGO_URI);
+    console.log('MongoDB Connected');
+  } catch (error) {
+    console.error('MongoDB connection failed:', error);
+    process.exit(1);
+  }
+
+  app.listen(process.env.PORT || 5000, () => {
     // eslint-disable-next-line no-console
-    console.log(`Server listening on port ${PORT}`);
+    console.log(`Server listening on port ${process.env.PORT || 5000}`);
   });
 }
 
